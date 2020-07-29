@@ -13,6 +13,7 @@ import org.gentoo.java.ebuilder.maven.JavaVersion;
  * Container for command line configuration.
  *
  * @author fordfrog
+ * @author Berrysoft
  */
 public class Config {
 
@@ -21,6 +22,11 @@ public class Config {
      */
     private Path cacheFile = Paths.get(System.getProperty("user.home"),
             ".java-ebuilder/cache");
+    /**
+     * Path to ebuilder config.
+     */
+    private Path configFile = Paths.get(System.getProperty("user.home"),
+            ".java-ebuilder/config");
     /**
      * URI that goes to SRC_URI.
      */
@@ -128,6 +134,24 @@ public class Config {
      */
     public void setCacheFile(final Path cacheFile) {
         this.cacheFile = cacheFile;
+    }
+
+    /**
+     * Getter for {@link #configFile}
+     * 
+     * @return {@link #configFile}
+     */
+    public Path getConfigFile() {
+        return configFile;
+    }
+
+    /**
+     * Setter for {@link #configFile}
+     * 
+     * @param configFile {@link #configFile}
+     */
+    public void setConfigFile(final Path configFile) {
+        this.configFile = configFile;
     }
 
     /**

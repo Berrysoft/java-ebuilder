@@ -5,12 +5,19 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.xml.stream.FactoryConfigurationError;
 import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamException;
@@ -21,8 +28,19 @@ import org.gentoo.java.ebuilder.Config;
  * Parser for parsing pom.xml into project collector class.
  *
  * @author fordfrog
+ * @author Berrysoft
  */
 public class MavenParser {
+
+    /**
+     * List of empty artifacts.
+     */
+    private List<String> emptyArtifacts;
+
+    /**
+     * Map of crazy versions.
+     */
+    private Map<String, String> crazyVersions;
 
     /**
      * Parses specified pom.xml files.
@@ -34,6 +52,8 @@ public class MavenParser {
      */
     public List<MavenProject> parsePomFiles(final Config config,
             final MavenCache mavenCache) {
+        parseConfig(config);
+
         final List<MavenProject> result
                 = new ArrayList<>(config.getPomFiles().size());
 
@@ -54,6 +74,73 @@ public class MavenParser {
         });
 
         return result;
+    }
+
+    /**
+     * Parse config file.
+     * 
+     * @param config application configuration
+     */
+    private void parseConfig(final Config config) {
+        emptyArtifacts = new ArrayList<>();
+        crazyVersions = new HashMap<>();
+
+        config.getStdoutWriter().println("Parsing config file...");
+        try (InputStream in = Files.newInputStream(config.getConfigFile(),
+                StandardOpenOption.CREATE)) {
+            BufferedReader reader
+                    = new BufferedReader(new InputStreamReader(in));
+            String part = null;
+            String line = null;
+            while ((line = reader.readLine()) != null) {
+                if (line.startsWith("[") && line.endsWith("]")) {
+                    part = line.substring(1, line.length() - 2);
+                } else {
+                    switch (part) {
+                        case "empty_artifacts":
+                            parseEmptyArtifact(line);
+                            break;
+                        case "versions":
+                            parseCrazyVersion(line);
+                            break;
+                        default:
+                            config.getErrorWriter().println(
+                                    "WARNING: unknown configuration: "
+                                    + part);
+                    }
+                }
+            }
+        } catch (final IOException ex) {
+            config.getErrorWriter().println("ERROR: cannot read config file");
+            Runtime.getRuntime().exit(1);
+        }
+    }
+    
+    /**
+     * Parse empty artifact name.
+     * 
+     * @param line the current line of config file
+     */
+    private void parseEmptyArtifact(final String line) {
+        emptyArtifacts.add(line);
+    }
+
+    /**
+     * Pattern for checking whether the line contains variable declaration.
+     */
+    private static final Pattern PATTERN_VARIABLE = Pattern.compile(
+            "^([^=]*)=(.*)$");
+
+    /**
+     * Parse crazy version projection.
+     * 
+     * @param line the current line of config file
+     */
+    private void parseCrazyVersion(final String line) {
+        final Matcher matcher = PATTERN_VARIABLE.matcher(line);
+        if (matcher.matches()) {
+            crazyVersions.put(matcher.group(1), matcher.group(2));
+        }
     }
 
     /**
@@ -519,9 +606,8 @@ public class MavenParser {
                     case "artifactId":
                         artifactId = reader.getElementText();
 
-			/* jsch.agentproxy is an empty artifact. */
-                        // TODO: this should go to a config file to ignore some artifacts
-			if (artifactId.equals("jsch.agentproxy")) {
+			            /* jsch.agentproxy is an empty artifact. */
+			            if (emptyArtifacts.contains(artifactId)) {
                             return;
                         }
                         break;
@@ -535,12 +621,11 @@ public class MavenParser {
                         version = reader.getElementText().replace(
                                 "-SNAPSHOT", "");
 
-			/* crazy version from
-			 * org.khronos:opengl-api:gl1.1-android-2.1_r1 */
-                        // TODO: this should go to a file mapping crazy versions
-			if (version.equals("gl1.1-android-2.1_r1")) {
-			    version = "2.1.1";
-			}
+			            /* crazy version from
+			             * org.khronos:opengl-api:gl1.1-android-2.1_r1 */
+			            if (crazyVersions.containsKey(version)) {
+			                version = crazyVersions.get(version);
+			            }
                         break;
                     default:
                         consumeElement(reader);
